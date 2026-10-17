@@ -1,0 +1,31 @@
+name: Vigia ERP
+# Revisa cada 10 minutos que el ERP responda. Si falla, GitHub te manda un correo.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Revisar erp.crmia.cloud
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 20 https://erp.crmia.cloud/app || echo 000)
+            echo "Intento $i: HTTP $code"
+            if [ "$code" = "200" ]; then echo "ERP OK"; exit 0; fi
+            sleep 30
+          done
+          echo "::error::EL ERP NO RESPONDE (HTTP $code). Revisar el VPS en Hostinger."
+          exit 1
+      - name: Mantener vivo el vigia (GitHub apaga los programados tras 60 dias sin actividad)
+        if: success()
+        run: |
+          if [ "$(date -u +%d%H%M | cut -c1-5)" = "01000" ]; then
+            git clone --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" r
+            cd r && git config user.name vigia && git config user.email vigia@users.noreply.github.com
+            date -u > latido.txt && git add latido.txt && git commit -m "latido mensual" && git push
+          fi
